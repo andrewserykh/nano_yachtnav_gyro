@@ -1,4 +1,4 @@
-/* v1.0
+/* v1.1
 
 !!!Внимание!!! Если bootloader не optiboot, то wdt надо закомментировать, он не работает на стандартной прошивке
 При прошивке: 
@@ -13,16 +13,15 @@ Watchdog таймер
 
 #define BAUD            9600  //Скорость последовательного порта
 #define LED             13    //Светоиод на Arduino
-
-#define IN_BTN1         6     //D6 Входы на подключение джойстика
-#define IN_BTN2         7     //D7
-#define IN_BTN3         8     //D8
-#define IN_BTN4         9     //D9
-
-#define OUT_RELAY1      2     //D2 Выходы на управление актуаторами через релейный модуль
-#define OUT_RELAY2      3     //D3 на 4 реле
-#define OUT_RELAY3      4     //D4
-#define OUT_RELAY4      5     //D5
+                              //D2  Прерывание GY-521 Гироскоп
+#define OUT_RELAY1      3     //D3  Выходы на управление актуаторами через релейный модуль
+#define OUT_RELAY2      4     //D4  на 4 реле
+#define OUT_RELAY3      5     //D5
+#define OUT_RELAY4      6     //D6
+#define IN_BTN1         7     //D7  Входы на подключение джойстика
+#define IN_BTN2         8     //D8
+#define IN_BTN3         9     //D9
+#define IN_BTN4         10    //D10
 
 bool Button1,Button2,Button3,Button4;
 
