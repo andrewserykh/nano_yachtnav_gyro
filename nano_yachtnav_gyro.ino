@@ -11,6 +11,8 @@ Watchdog таймер
 */
 #include <avr/wdt.h>
 
+#define WDT_OFF         1     //1=Без WatchDog таймера (не optiboot)
+
 #define BAUD            9600  //Скорость последовательного порта
 #define LED             13    //Светоиод на Arduino
                               //D2  Прерывание GY-521 Гироскоп
@@ -48,7 +50,7 @@ void setup() {
   pinMode(IN_BTN4,INPUT_PULLUP);
   digitalWrite(IN_BTN4,HIGH);
  
-  wdt_enable(WDTO_1S);
+  if (!WDT_OFF) wdt_enable(WDTO_1S);
   wdt_reset();
 }
 
