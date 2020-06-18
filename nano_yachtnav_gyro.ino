@@ -8,6 +8,24 @@
   Watchdog таймер
   Управление актуатором с джойстика ЛЕВО,ПРАВО
 
+	NEXTION описание страницы AP:
+ 
+	* AP1 *
+	tHDG.txt - Текущий курс
+  tkp.txt; + = id8  ; - = id11 ;  65 03 08+ ; 65 03 0b-
+  tki.txt; + = id9  ; - = id12 ;  65 03 09+ ; 65 03 0c-
+  tkd.txt; + = id10 ; - = id13 ;  65 03 0a+ ; 65 03 0d-
+
+  * AP2 *
+  tdz.txt - DEADZONE  ; 65 04 09+ ; 65 04 0c-
+  tol.txt - OUT_LIMIT ; 65 04 0a+ ; 65 04 0d-
+  tcy.txt - CYCLE     ; 65 04 0b+ ; 65 04 0e-
+
+  * RUDDER *
+  LEFT =  65 05 04 00 FF FF FF
+  RIGHT = 65 05 05
+ 
+
 */
 #include <avr/wdt.h>
 #include "gy521.h"
