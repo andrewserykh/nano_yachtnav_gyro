@@ -1,4 +1,4 @@
-/* v3.1  ATMEGA328P
+/* v3.2  ATMEGA328P
 
   !!!Внимание!!! Если bootloader не optiboot, то wdt надо закомментировать, он не работает на стандартной прошивке
   При прошивке:
@@ -8,8 +8,10 @@
   Watchdog таймер
   Управление актуатором с джойстика ЛЕВО,ПРАВО, включение, выключение автопилота ВВЕРХ,ВНИЗ
 
+  Включение RELAY4 - насосов, с джойстика (5 раз нажат вниз за 2 секунды)
+
 	NEXTION описание страницы AP:
- 
+  ---
 	* AP1 *
 	tHDG.txt - Текущий курс
   tkp.txt; + = id8  ; - = id11 ;  65 03 08+ ; 65 03 0b-
@@ -51,10 +53,14 @@
 #define T_MS_RUDDER     2000 //интервал обновления управления румпелем
 #define T_MS_HMI        3000 //интервал посылки сообщения на HMI
 
+#define RX_BUFFER       256
+
+#define T_MS_PUMP       600000  //10 минут время включения помпы
+
 unsigned long ms_hmi;
 
 SoftwareSerial SSerial(11, 12); // RX, TX
-char SSerialIn[256]; //буфер приема по serial портам
+char SSerialIn[RX_BUFFER]; //буфер приема по serial портам
 byte SSerialInLen; //заполнение буфера
 long SSerialMillisRcv; //прием по 485 порту (отсрочка на прием всего пакета)
 
@@ -65,6 +71,7 @@ MPU6050 mpu6050(Wire);
 
 bool MAN; //ручное управление
 bool AP; //состояние автопилота (включен/выключен) (-->LED13)
+float Heading; //требуемый курс (в градусах) по гиродатчику
 float Course; //курс по гиродатчику, долюен быть = 0 (ось z)
 
 //- параметри ПИД-регулирования
@@ -88,6 +95,10 @@ char SerialIn[64]; //буфер приема по serial портам
 byte SerialInLen; //заполнение буфера
 long SerialMillisRcv; //прием по 485 порту (отсрочка на прием всего пакета)
 //---
+long ms_button; //время для команды несколько раз нажатий джойстиком
+int  cnt_button; //сетчик нажатий
+bool PUMP_ON; //помпа (реле4)
+long ms_pump; //время включения помпы
 
 void setup() {
   wdt_disable();
@@ -191,24 +202,37 @@ void loop() {
   Course = mpu6050.getGyroAngleZ();
 
   if (Button3) { //ДЖОЙСТИК ВВЕРХ - ВКЛЮЧЕНИЕ АВТОПИЛОТА
-    digitalWrite( OUT_RELAY1, HIGH ); //сброс текущего управления
-    digitalWrite( OUT_RELAY2, HIGH );
-    wdt_disable();
-    mpu6050.calcGyroOffsets(false, 100, 100);
-    mpu6050.resetAngleZ();
+    //wdt_disable();
+    //mpu6050.calcGyroOffsets(false, 100, 100);
+    //mpu6050.resetAngleZ();
+    Heading = Course;
     ms_ap = millis();
     AP = true;
-    wdt_enable(WDTO_1S);
-    wdt_reset();
-    digitalWrite( OUT_RELAY1, LOW ); //сброс текущего управления
-    digitalWrite( OUT_RELAY2, LOW );    
+    //wdt_enable(WDTO_1S);
+    //wdt_reset();
   } //Button3
 
   if (Button4) { //ДЖОЙСТИК ВНИЗ - ВЫКЛЮЧЕНИЕ АВТОПИЛОТА
+    if (millis() - ms_button > 2000) {
+      if (cnt_button > 4) { //пять раз джойстиком вниз - включение помпы
+        PUMP_ON = true;
+        ms_pump = millis();
+      }
+      ms_button = millis(); //прошло 2 секунды, значит не было нажатий
+      cnt_button = 0;
+    }
+    cnt_button++;
     digitalWrite( OUT_RELAY1, LOW ); //сброс текущего управления
     digitalWrite( OUT_RELAY2, LOW );
     AP_OUT_ACTIVE = false;
     AP = false;
+  }
+
+  if (PUMP_ON){
+    digitalWrite( OUT_RELAY4, HIGH );
+    if (millis() - ms_pump >T_MS_PUMP) PUMP_ON = false;
+  } else {
+    digitalWrite( OUT_RELAY4, LOW );
   }
 
   if (MAN) {
@@ -224,14 +248,14 @@ void loop() {
 
     //---ПИД-регулятор
     if (millis() - ms_ap > T_MS_AP) {
-      if ( abs(Course) > DEADZONE ) {
-        P = abs(Course) ;
+      if ( abs(Heading - Course) > DEADZONE ) {
+        P = abs(Heading - Course) ;
       } //DEADZONE
       else {
         P = 0;
       } //DEADZONE
       MINUS = false;
-      if (Course < 0) MINUS = true;
+      if ((Heading - Course) < 0) MINUS = true;
       I = (I + P * CYCLE);
       if (P == 0) {
         I = I * 0.98;
@@ -259,7 +283,6 @@ void loop() {
 
     //-управление румпелем
     if (millis() - ms_rudder > T_MS_RUDDER) {
-      Serial.println(Course);
       if (AP_OUT_ACTIVE){ //есть сигнал на управление (дописать сброс сигнала по истечении времени)
         if (millis() - ms_out > T_MS_OUT) { //сброс выходного импульса по истечении его времени
             digitalWrite( OUT_RELAY1, LOW );
@@ -270,8 +293,6 @@ void loop() {
         
       } else { //!AP_OUT_ACTIVE - в настоящий момент нет сигнала на управление
         if (abs(OUT) >= OUT_LIMIT) {
-          //Serial.print(OUT);
-          //Serial.println(" OUT ACTIVE");
           if (MINUS) {
             digitalWrite( OUT_RELAY1, LOW );
             digitalWrite( OUT_RELAY2, HIGH );
@@ -294,7 +315,7 @@ void loop() {
     digitalWrite(LED,HIGH);
     char SSerialChar = (char)SSerial.read();
     SSerialIn[SSerialInLen] = SSerialChar;
-    SSerialInLen++;
+    if (SSerialInLen < RX_BUFFER) SSerialInLen++;
     SSerialMillisRcv = millis(); //для отсрочки обработки
     digitalWrite(LED,LOW);
   } //while available
@@ -362,7 +383,8 @@ void loop() {
   } //SerialInLen>0
 
   if (millis() - ms_hmi > T_MS_HMI) {
-    HmiPutFloat("tHDG.txt=",Course); //вывод текущего курса на hmi панель
+    HmiPutFloat("tCOG.txt=",Course); //вывод текущего направление на hmi панель
+    HmiPutFloat("tHDG.txt=",Heading); //вывод текущего курса на hmi панель
     HmiPutFloat("tkp.txt=",Kp);
     HmiPutFloat("tki.txt=",Ki);
     HmiPutFloat("tkd.txt=",Kd);
