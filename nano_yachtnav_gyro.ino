@@ -1,4 +1,4 @@
-/* v3.2  ATMEGA328P
+/* v4.2  ATMEGA328P
 
   !!!Внимание!!! Если bootloader не optiboot, то wdt надо закомментировать, он не работает на стандартной прошивке
   При прошивке:
@@ -8,7 +8,9 @@
   Watchdog таймер
   Управление актуатором с джойстика ЛЕВО,ПРАВО, включение, выключение автопилота ВВЕРХ,ВНИЗ
 
-  Включение RELAY4 - насосов, с джойстика (5 раз нажат вниз за 2 секунды)
+  Включение RELAY4 - насосов, с джойстика (5 раз нажать вниз за 2 секунды)
+
+  A0..A3 - дискретный вход +5В с модуля приемника радиопульта (управление с пульта румпелем)
 
 	NEXTION описание страницы AP:
   ---
@@ -53,9 +55,11 @@
 #define T_MS_RUDDER     2000 //интервал обновления управления румпелем
 #define T_MS_HMI        3000 //интервал посылки сообщения на HMI
 
-#define RX_BUFFER       256
+#define RX_BUFFER       512
 
 #define T_MS_PUMP       600000  //10 минут время включения помпы
+
+#define SPEAKER         A6      //динамик
 
 unsigned long ms_hmi;
 
@@ -131,6 +135,14 @@ void setup() {
   pinMode(IN_BTN4, INPUT_PULLUP);
   digitalWrite(IN_BTN4, HIGH);
 
+//---входы кнопок для модуля радиопульта
+  pinMode(A0,INPUT); //кнопка A (ВПРАВО)
+  pinMode(A1,INPUT); //кнопка B (ВЫКЛЮЧИТЬ АВТОПИЛОТ)
+  pinMode(A2,INPUT); //кнопка C (ВЛЕВО)
+  pinMode(A3,INPUT); //кнопка D (ВКЛЮЧИТЬ АВТОПИЛОТ)
+
+  pinMode(SPEAKER,OUTPUT);
+  
   OUT_H = 100;
   OUT_L = 0;
 
@@ -143,13 +155,14 @@ void setup() {
   T_MS_OUT = EEPROM_float_read(24);  
 
   if( isnan(Kp) ){
+    Serial.println("Initial AP parameters");
     //начальные настройки ПИД-регулирования, закомментить если уже записаны в EEPROM
     Kp = 2;
     Ki = 1;
     Kd = 0.1;
     CYCLE = 0.1;
     DEADZONE = 5;
-    OUT_LIMIT = 80; //выше какого значения OUT будет подан импульс на управление
+    OUT_LIMIT = 35; //выше какого значения OUT будет подан импульс на управление
     T_MS_OUT = 1000; //длительность импульса управления на румпель
     EEPROM_float_write(0, Kp);
     EEPROM_float_write(4, Ki);
@@ -168,12 +181,14 @@ void setup() {
   Serial.println(Ki);
   Serial.print("Kd = ");
   Serial.println(Kd);
-  
+  Serial.print("OUTlim = ");
+  Serial.println(OUT_LIMIT);
   //---
   ms_rudder = ms_ap = ms_out = millis();
 
   if (!WDT_OFF) wdt_enable(WDTO_1S);
   wdt_reset();
+
 }
 
 void loop() {
@@ -188,12 +203,12 @@ void loop() {
     digitalWrite( OUT_RELAY2, LOW );
   }
 
-  if (Button1) { //TURN LEFT
+  if (Button1 || digitalRead(A2)) { //TURN LEFT
     digitalWrite( OUT_RELAY1, HIGH );
     digitalWrite( OUT_RELAY2, LOW );
   } //Button1
 
-  if (Button2) { // TURN RIGHT
+  if (Button2 || digitalRead(A0)) { // TURN RIGHT
     digitalWrite( OUT_RELAY1, LOW );
     digitalWrite( OUT_RELAY2, HIGH );
   } //Button2
@@ -201,18 +216,14 @@ void loop() {
   mpu6050.update();
   Course = mpu6050.getGyroAngleZ();
 
-  if (Button3) { //ДЖОЙСТИК ВВЕРХ - ВКЛЮЧЕНИЕ АВТОПИЛОТА
-    //wdt_disable();
-    //mpu6050.calcGyroOffsets(false, 100, 100);
-    //mpu6050.resetAngleZ();
+  if (Button3 || digitalRead(A3)) { //ДЖОЙСТИК ВВЕРХ - ВКЛЮЧЕНИЕ АВТОПИЛОТА
     Heading = Course;
     ms_ap = millis();
     AP = true;
-    //wdt_enable(WDTO_1S);
-    //wdt_reset();
+    Serial.print("Course=");Serial.println(Course);
   } //Button3
 
-  if (Button4) { //ДЖОЙСТИК ВНИЗ - ВЫКЛЮЧЕНИЕ АВТОПИЛОТА
+  if (Button4 || digitalRead(A1)) { //ДЖОЙСТИК ВНИЗ - ВЫКЛЮЧЕНИЕ АВТОПИЛОТА
     if (millis() - ms_button > 2000) {
       if (cnt_button > 4) { //пять раз джойстиком вниз - включение помпы
         PUMP_ON = true;
@@ -283,7 +294,7 @@ void loop() {
 
     //-управление румпелем
     if (millis() - ms_rudder > T_MS_RUDDER) {
-      if (AP_OUT_ACTIVE){ //есть сигнал на управление (дописать сброс сигнала по истечении времени)
+      if (AP_OUT_ACTIVE){ //есть сигнал на управление
         if (millis() - ms_out > T_MS_OUT) { //сброс выходного импульса по истечении его времени
             digitalWrite( OUT_RELAY1, LOW );
             digitalWrite( OUT_RELAY2, LOW );
